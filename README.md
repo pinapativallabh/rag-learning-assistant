@@ -196,7 +196,7 @@ Example response:
 
 ## Author
 
-Pinapativallabh  
+Vallabh  
 B.Tech CSE | Backend & AI Systems Developer
 
 ---
