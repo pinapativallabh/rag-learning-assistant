@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import fitz
-from ollama import AsyncClient
+
 import re
 import json
 import os
@@ -13,7 +13,7 @@ import hashlib
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from vector_store import get_collection
-from llm import LLMFactory
+from ai_provider import AIProvider
 
 from db import (
     init_db,
@@ -52,16 +52,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ---------- Embedding and Cache Helpers ----------
 async def get_embeddings_async(texts: list[str]) -> list[list[float]]:
-    sem = asyncio.Semaphore(10)  # limit concurrency
-    client = AsyncClient()
-    
-    async def embed_text(text: str):
-        async with sem:
-            res = await client.embeddings(model="nomic-embed-text:latest", prompt=text)
-            return res["embedding"]
-            
-    tasks = [embed_text(text) for text in texts]
-    return await asyncio.gather(*tasks)
+    client = AIProvider.get_embedding_client()
+    return await client.embed_batch(texts)
 
 
 def get_md5_hash(text: str) -> str:
@@ -103,14 +95,14 @@ class AdaptiveQuizRequest(BaseModel):
 @app.get("/api/health")
 def health_check():
     import os
-    from llm import LLMFactory
+    from ai_provider import AIProvider
     try:
-        client = LLMFactory.get_client()
-        provider = os.getenv("LLM_PROVIDER", "local").lower().strip()
+        client = AIProvider.get_chat_client()
+        provider = os.getenv("AI_PROVIDER", "unknown").lower().strip()
         model_name = client.model_name
     except Exception as e:
-        provider = "local"
-        model_name = "llama3:8b"
+        provider = "unknown"
+        model_name = "unknown"
     return {
         "status": "Backend running",
         "llm_provider": provider,
@@ -217,10 +209,9 @@ async def ask_question(file_id: str = Body(...), question: str = Body(...)):
     collection = get_collection()
 
     # Get query embedding
-    client = AsyncClient()
+    embed_client = AIProvider.get_embedding_client()
     try:
-        query_embedding_res = await client.embeddings(model="nomic-embed-text:latest", prompt=question)
-        query_embedding = query_embedding_res["embedding"]
+        query_embedding = await embed_client.embed(question)
     except Exception as e:
         print("Embedding error in ask:", e)
         return {"answer": "Error generating query embeddings.", "chunks_used": []}
@@ -285,7 +276,7 @@ Question:
 {question}
 """
 
-    llm_client = LLMFactory.get_client()
+    llm_client = AIProvider.get_chat_client()
     cache_key = get_md5_hash(f"{llm_client.model_name}_ask_" + prompt)
     cached = get_cached_response(cache_key)
     if cached:
@@ -318,12 +309,11 @@ Question:
 async def ask_question_stream(file_id: str = Body(...), question: str = Body(...)):
     async def event_generator():
         collection = get_collection()
-        client = AsyncClient()
+        embed_client = AIProvider.get_embedding_client()
 
         # Get query embedding
         try:
-            query_embedding_res = await client.embeddings(model="nomic-embed-text:latest", prompt=question)
-            query_embedding = query_embedding_res["embedding"]
+            query_embedding = await embed_client.embed(question)
         except Exception as e:
             yield json.dumps({"type": "content", "text": f"Error generating query embeddings: {str(e)}"}) + "\n"
             return
@@ -384,7 +374,7 @@ Question:
 {question}
 """
 
-        llm_client = LLMFactory.get_client()
+        llm_client = AIProvider.get_chat_client()
         cache_key = get_md5_hash(f"{llm_client.model_name}_ask_" + prompt)
         cached = get_cached_response(cache_key)
         
@@ -443,7 +433,7 @@ Material:
 {combined_text}
 """
 
-    llm_client = LLMFactory.get_client()
+    llm_client = AIProvider.get_chat_client()
     cache_key = get_md5_hash(f"{llm_client.model_name}_summary_" + prompt)
     cached = get_cached_response(cache_key)
     if cached:
@@ -501,7 +491,7 @@ Material:
 {combined_text}
 """
 
-    llm_client = LLMFactory.get_client()
+    llm_client = AIProvider.get_chat_client()
     cache_key = get_md5_hash(f"{llm_client.model_name}_quiz_" + prompt)
     cached = get_cached_response(cache_key)
     
@@ -656,7 +646,7 @@ Roadmap:
 2. ...
 3. ...
 """
-        llm_client = LLMFactory.get_client()
+        llm_client = AIProvider.get_chat_client()
         cache_key = get_md5_hash(f"{llm_client.model_name}_roadmap_" + prompt)
         cached = get_cached_response(cache_key)
 
@@ -755,7 +745,7 @@ Material:
 {combined_text}
 """
 
-    llm_client = LLMFactory.get_client()
+    llm_client = AIProvider.get_chat_client()
     cache_key = get_md5_hash(f"{llm_client.model_name}_adaptive_" + prompt)
     cached = get_cached_response(cache_key)
 
