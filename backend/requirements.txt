@@ -7,3 +7,5 @@ ollama==0.1.9
 langchain-text-splitters==0.0.1
 chromadb==0.4.24
 python-multipart==0.0.9
+google-genai>=2.8.0
+python-dotenv>=1.0.1

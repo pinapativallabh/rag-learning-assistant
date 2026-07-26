@@ -26,6 +26,23 @@ def init_db():
     )
     """)
 
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS parent_chunks (
+        file_id TEXT,
+        chunk_no INTEGER,
+        text TEXT,
+        PRIMARY KEY (file_id, chunk_no)
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS llm_cache (
+        key TEXT PRIMARY KEY,
+        response TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -221,7 +238,7 @@ def get_topic_progress(student_id, file_id):
         correct = sum(qmap.values())
         result.append((topic, total, correct))
 
-    return result               
+    return result
 
 def get_student_summary_all(student_id, file_id):
     conn = sqlite3.connect(DB_NAME)
@@ -263,3 +280,66 @@ def get_weak_topics(student_id, file_id):
     conn.close()
 
     return rows
+
+
+# ---------- Parent Chunks Helpers ----------
+def save_parent_chunks(file_id, chunks):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.executemany("""
+    INSERT OR REPLACE INTO parent_chunks (file_id, chunk_no, text)
+    VALUES (?, ?, ?)
+    """, [(file_id, i + 1, text) for i, text in enumerate(chunks)])
+    conn.commit()
+    conn.close()
+
+
+def get_parent_chunks(file_id, limit=None):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    if limit:
+        cur.execute("""
+        SELECT text FROM parent_chunks
+        WHERE file_id=?
+        ORDER BY chunk_no ASC
+        LIMIT ?
+        """, (file_id, limit))
+    else:
+        cur.execute("""
+        SELECT text FROM parent_chunks
+        WHERE file_id=?
+        ORDER BY chunk_no ASC
+        """, (file_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def get_parent_chunk_by_no(file_id, chunk_no):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT text FROM parent_chunks
+    WHERE file_id=? AND chunk_no=?
+    """, (file_id, chunk_no))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+# ---------- LLM Cache Helpers ----------
+def get_cached_response(key):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("SELECT response FROM llm_cache WHERE key=?", (key,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def save_cached_response(key, response):
+    conn = sqlite3.connect(DB_NAME)
+    cur = conn.cursor()
+    cur.execute("INSERT OR REPLACE INTO llm_cache (key, response) VALUES (?, ?)", (key, response))
+    conn.commit()
+    conn.close()
