@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
 
-const API_BASE = "http://localhost:8001";
+const API_BASE = "";
 
 // ---------- Inline SVG Icons ----------
 const IconUpload = () => (
@@ -117,7 +118,7 @@ export default function App() {
   useEffect(() => {
     const fetchSystemInfo = async () => {
       try {
-        const res = await fetch(`${API_BASE}/`);
+        const res = await fetch(`${API_BASE}/api/health`);
         const data = await res.json();
         if (data.llm_provider) {
           setSystemInfo({ provider: data.llm_provider, model: data.llm_model });
@@ -874,10 +875,10 @@ export default function App() {
                     padding: "24px",
                     borderRadius: "10px",
                     border: "1px solid var(--border-color)",
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "var(--font-sans)"
-                  }}>
-                    {summaryData.summary}
+                    fontFamily: "var(--font-sans)",
+                    overflowWrap: "break-word"
+                  }} className="markdown-body">
+                    <ReactMarkdown>{summaryData.summary}</ReactMarkdown>
                   </div>
                   {summaryData.cached && (
                     <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", alignSelf: "flex-end" }}>⚡ Retrieved from local cache</span>
@@ -888,7 +889,7 @@ export default function App() {
               <div className="glass-panel" style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
                 {isLoadingSummary ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
-                    <div className="animate-pulse" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
+                    <div className="animate-spin" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
                     <p>Scanning document slices and composing structure...</p>
                   </div>
                 ) : (
@@ -941,7 +942,7 @@ export default function App() {
             {isLoadingQuiz ? (
               <div className="glass-panel" style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
-                  <div className="animate-pulse" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
+                  <div className="animate-spin" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
                   <p>Synthesizing {quizCount} questions focusing on {quizType === "adaptive" ? "prior mistakes" : "core topics"}...</p>
                 </div>
               </div>
@@ -1085,19 +1086,19 @@ export default function App() {
               <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                 {/* Scorecards */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.5fr", gap: "20px" }}>
-                  <div className="glass-panel" style={{ padding: "24px" }}>
+                  <div className="glass-panel" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "6px" }}>
                     <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Total Attempted</span>
-                    <h3 style={{ fontSize: "2.2rem", fontWeight: 800, marginTop: "8px", color: "var(--primary)" }}>{progressData.total_attempted}</h3>
-                    <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "4px" }}>individual question submissions</p>
+                    <h3 style={{ fontSize: "2.2rem", fontWeight: 800, color: "var(--primary)" }}>{progressData.total_attempted}</h3>
+                    <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>individual question submissions</p>
                   </div>
-                  <div className="glass-panel" style={{ padding: "24px" }}>
+                  <div className="glass-panel" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "6px" }}>
                     <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Average Accuracy</span>
-                    <h3 style={{ fontSize: "2.2rem", fontWeight: 800, marginTop: "8px", color: "var(--success)" }}>{progressData.accuracy.toFixed(0)}%</h3>
-                    <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "4px" }}>correct vs incorrect ratio</p>
+                    <h3 style={{ fontSize: "2.2rem", fontWeight: 800, color: "var(--success)" }}>{progressData.accuracy.toFixed(0)}%</h3>
+                    <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>correct vs incorrect ratio</p>
                   </div>
-                  <div className="glass-panel" style={{ padding: "24px", borderLeft: "4px solid var(--secondary)", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Smart Recommendation</span>
-                    <p style={{ fontSize: "0.95rem", fontWeight: 600, marginTop: "8px", lineHeight: 1.4, color: "#ffffff" }}>{progressData.recommendation}</p>
+                  <div className="glass-panel" style={{ padding: "24px", borderLeft: "4px solid var(--secondary)", display: "flex", flexDirection: "column", justifyContent: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "0.85rem", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>Smart Recommendation</span>
+                    <p style={{ fontSize: "1.05rem", fontWeight: 500, lineHeight: 1.5, color: "#ffffff" }}>{progressData.recommendation}</p>
                   </div>
                 </div>
 
@@ -1137,12 +1138,12 @@ export default function App() {
                       fontSize: "0.9rem",
                       lineHeight: 1.6,
                       color: "rgba(255,255,255,0.9)",
-                      whiteSpace: "pre-wrap",
                       fontFamily: "var(--font-sans)",
                       overflowY: "auto",
-                      maxHeight: "350px"
-                    }}>
-                      {progressData.personalized_roadmap}
+                      maxHeight: "350px",
+                      overflowWrap: "break-word"
+                    }} className="markdown-body">
+                      <ReactMarkdown>{progressData.personalized_roadmap}</ReactMarkdown>
                     </div>
                   </div>
                 </div>
@@ -1151,7 +1152,7 @@ export default function App() {
               <div className="glass-panel" style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
                 {isLoadingProgress ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
-                    <div className="animate-pulse" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
+                    <div className="animate-spin" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
                     <p>Compiling stats and generating customized roadmap...</p>
                   </div>
                 ) : (
@@ -1248,7 +1249,7 @@ export default function App() {
               <div className="glass-panel" style={{ padding: "60px 20px", textAlign: "center", color: "var(--text-muted)" }}>
                 {isLoadingTeacher ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
-                    <div className="animate-pulse" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
+                    <div className="animate-spin" style={{ width: "48px", height: "48px", borderRadius: "50%", border: "3px solid var(--primary)", borderTopColor: "transparent" }}></div>
                     <p>Syncing teacher records from relational tables...</p>
                   </div>
                 ) : (

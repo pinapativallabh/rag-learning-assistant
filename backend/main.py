@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Body
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import fitz
 from ollama import AsyncClient
@@ -98,9 +99,9 @@ class AdaptiveQuizRequest(BaseModel):
     num_questions: int = 5
 
 
-# ---------- Root ----------
-@app.get("/")
-def root():
+# ---------- System Info ----------
+@app.get("/api/health")
+def health_check():
     import os
     from llm import LLMFactory
     try:
@@ -269,11 +270,12 @@ async def ask_question(file_id: str = Body(...), question: str = Body(...)):
     ])
 
     prompt = f"""
-Answer strictly from the context.
+You are an assistant answering questions based ONLY on the provided context.
 
 Rules:
-- Use only the context.
-- If answer is absent, reply exactly:
+- Base your answer strictly on the text provided below.
+- If the question asks for a general summary, topics, or an outline, provide the best answer you can using the context provided.
+- If the answer to a specific factual question is completely absent from the context, reply exactly:
 Not provided in PDF.
 
 Context:
@@ -281,8 +283,6 @@ Context:
 
 Question:
 {question}
-
-Answer briefly.
 """
 
     llm_client = LLMFactory.get_client()
@@ -369,11 +369,12 @@ async def ask_question_stream(file_id: str = Body(...), question: str = Body(...
         ])
 
         prompt = f"""
-Answer strictly from the context.
+You are an assistant answering questions based ONLY on the provided context.
 
 Rules:
-- Use only the context.
-- If answer is absent, reply exactly:
+- Base your answer strictly on the text provided below.
+- If the question asks for a general summary, topics, or an outline, provide the best answer you can using the context provided.
+- If the answer to a specific factual question is completely absent from the context, reply exactly:
 Not provided in PDF.
 
 Context:
@@ -381,8 +382,6 @@ Context:
 
 Question:
 {question}
-
-Answer briefly.
 """
 
         llm_client = LLMFactory.get_client()
@@ -435,8 +434,8 @@ async def summarize_pdf(req: SummaryRequest):
     combined_text = "\n\n".join(parent_docs)
 
     prompt = f"""
-Summarize into:
-1. Short summary
+Summarize the document into:
+1. A comprehensive and genuinely useful summary (at least 2-3 paragraphs) capturing the essence of the document.
 2. Key topics
 3. Important terms
 
@@ -785,3 +784,17 @@ Material:
         "student_id": req.student_id,
         "quiz": quiz_list
     }
+
+# ---------- Serve Frontend ----------
+if os.path.isdir("static"):
+    app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
+
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    file_path = os.path.join("static", full_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    index_path = os.path.join("static", "index.html")
+    if os.path.isfile(index_path):
+        return FileResponse(index_path)
+    return {"error": "Frontend not built"}
