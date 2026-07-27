@@ -120,12 +120,15 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         import asyncio
-        batch_size = 50
+        import os
+        
+        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "50"))
         all_embeddings = []
         
         print(f"\n[DEBUG] Starting embedding generation using Ollama")
         print(f"[DEBUG] Model: {self.model_name}")
         print(f"[DEBUG] Total input chunks: {len(texts)}")
+        print(f"[DEBUG] Batch size: {batch_size}")
 
         async def embed_text(text: str):
             async with self.sem:
@@ -135,7 +138,7 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
         for i in range(0, len(texts), batch_size):
             batch_num = (i // batch_size) + 1
             chunk = texts[i:i + batch_size]
-            print(f"[DEBUG] Batch {batch_num} | Size: {len(chunk)}")
+            print(f"[DEBUG] Batch {batch_num} | Chunks in batch: {len(chunk)}")
             
             tasks = [embed_text(t) for t in chunk]
             results = await asyncio.gather(*tasks)
@@ -176,15 +179,37 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         import asyncio
-        batch_size = 50
+        import os
+        from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+        
+        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "50"))
+        max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "6"))
+        base_delay = int(os.getenv("EMBEDDING_RETRY_BASE_DELAY", "4"))
+        max_delay = int(os.getenv("EMBEDDING_RETRY_MAX_DELAY", "60"))
+        
         all_embeddings = []
         
         print(f"\n[DEBUG] Starting embedding generation using Gemini")
         print(f"[DEBUG] Model: {self.model_name}")
         print(f"[DEBUG] Total input chunks: {len(texts)}")
+        print(f"[DEBUG] Batch size: {batch_size}, Max retries: {max_retries}")
         
-        sem = asyncio.Semaphore(15)
+        sem = asyncio.Semaphore(10)  # Lowering concurrency to reduce 429s
+
+        def is_retryable(e: Exception) -> bool:
+            # Retry on rate limits (429) and server errors (500, 503)
+            err_str = str(e)
+            return "429" in err_str or "500" in err_str or "503" in err_str or "exhausted" in err_str.lower()
+            
+        def log_retry(retry_state):
+            print(f"[DEBUG] Rate limit hit. Retrying chunk... (Attempt {retry_state.attempt_number}/{max_retries}) | Delay: {retry_state.next_action.sleep:.2f}s")
         
+        @retry(
+            retry=retry_if_exception(is_retryable),
+            stop=stop_after_attempt(max_retries),
+            wait=wait_exponential(multiplier=base_delay, max=max_delay),
+            before_sleep=log_retry
+        )
         async def embed_single(text: str):
             async with sem:
                 res = await self.client.aio.models.embed_content(
@@ -196,7 +221,7 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
         for i in range(0, len(texts), batch_size):
             batch_num = (i // batch_size) + 1
             chunk = texts[i:i + batch_size]
-            print(f"[DEBUG] Batch {batch_num} | Size: {len(chunk)}")
+            print(f"[DEBUG] Batch {batch_num} | Chunks in batch: {len(chunk)}")
             
             tasks = [embed_single(t) for t in chunk]
             results = await asyncio.gather(*tasks)
