@@ -12,7 +12,7 @@ import asyncio
 import hashlib
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from vector_store import get_collection
+from vector_store import get_collection, init_vector_store, validate_dimensions
 from ai_provider import AIProvider
 
 from db import (
@@ -49,6 +49,27 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+@app.on_event("startup")
+async def startup_event():
+    print("[DEBUG] Running startup validation...")
+    try:
+        # Determine current embedding configuration
+        client = AIProvider.get_embedding_client()
+        provider = os.getenv("EMBEDDING_PROVIDER", "unknown")
+        model = os.getenv("EMBEDDING_MODEL", "unknown")
+        
+        # Embed a dummy string to reliably determine the configured dimension
+        dummy_embedding = await client.embed("test dimension")
+        dimension = len(dummy_embedding)
+        print(f"[DEBUG] Determined embedding dimension: {dimension}")
+        
+        # Initialize vector store with strict dimension checking
+        init_vector_store(provider, model, dimension)
+        print("[DEBUG] Startup validation complete.")
+    except Exception as e:
+        print(f"[FATAL] Startup validation failed: {e}")
+        import sys
+        sys.exit(1)
 
 # ---------- Embedding and Cache Helpers ----------
 async def get_embeddings_async(texts: list[str]) -> list[list[float]]:
@@ -207,6 +228,9 @@ async def upload_pdf(file: UploadFile = File(...)):
             
     if len(set(child_ids)) != len(child_ids):
         raise ValueError("Duplicate IDs found in child_ids")
+        
+    # Validate against vector store configuration
+    validate_dimensions(child_embeddings)
         
     print("[DEBUG] --- HARD VALIDATION PASSED ---\n")
     
