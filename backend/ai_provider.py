@@ -229,6 +229,8 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
             
             batch_embeddings = []
             if res and hasattr(res, "embeddings"):
+                if len(res.embeddings) != len(chunk):
+                    raise ValueError(f"Gemini API parity mismatch in batch {batch_num}: sent {len(chunk)} Content objects, received {len(res.embeddings)} embeddings.")
                 for emb in res.embeddings:
                     batch_embeddings.append(emb.values)
 
