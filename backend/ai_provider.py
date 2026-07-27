@@ -245,8 +245,17 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
             all_embeddings.extend(batch_embeddings)
             print(f"[DEBUG] Running total: {len(all_embeddings)}")
             
+            # Proactively sleep to avoid hitting the 100 Requests Per Minute limit
+            if i + batch_size < len(texts):
+                rpm_limit = int(os.getenv("EMBEDDING_RATE_LIMIT_RPM", "90"))
+                if rpm_limit > 0:
+                    sleep_time = (60.0 / rpm_limit) * len(chunk)
+                    print(f"[DEBUG] Proactively sleeping for {sleep_time:.2f}s to respect rate limits...")
+                    await asyncio.sleep(sleep_time)
+
         print(f"[DEBUG] Final total chunks: {len(texts)}")
         print(f"[DEBUG] Final total embeddings: {len(all_embeddings)}")
+        
         return all_embeddings
 
 # --- Factories ---
