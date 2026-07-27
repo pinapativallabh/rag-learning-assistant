@@ -194,7 +194,7 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
         print(f"[DEBUG] Total input chunks: {len(texts)}")
         print(f"[DEBUG] Batch size: {batch_size}, Max retries: {max_retries}")
         
-        sem = asyncio.Semaphore(10)  # Lowering concurrency to reduce 429s
+        from google.genai import types
 
         def is_retryable(e: Exception) -> bool:
             # Retry on rate limits (429) and server errors (500, 503)
@@ -202,7 +202,7 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
             return "429" in err_str or "500" in err_str or "503" in err_str or "exhausted" in err_str.lower()
             
         def log_retry(retry_state):
-            print(f"[DEBUG] Rate limit hit. Retrying chunk... (Attempt {retry_state.attempt_number}/{max_retries}) | Delay: {retry_state.next_action.sleep:.2f}s")
+            print(f"[DEBUG] Rate limit hit. Retrying batch... (Attempt {retry_state.attempt_number}/{max_retries}) | Delay: {retry_state.next_action.sleep:.2f}s")
         
         @retry(
             retry=retry_if_exception(is_retryable),
@@ -210,33 +210,28 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
             wait=wait_exponential(multiplier=base_delay, max=max_delay),
             before_sleep=log_retry
         )
-        async def embed_single(text: str):
-            async with sem:
-                res = await self.client.aio.models.embed_content(
-                    model=self.model_name,
-                    contents=text
-                )
-                return res
+        async def embed_batch_request(batch_texts: list[str]):
+            # Wrap each text in a Content object to prevent Gemini from treating the list as a single document
+            contents = [types.Content(parts=[types.Part.from_text(text=t)]) for t in batch_texts]
+            res = await self.client.aio.models.embed_content(
+                model=self.model_name,
+                contents=contents
+            )
+            return res
                 
         for i in range(0, len(texts), batch_size):
             batch_num = (i // batch_size) + 1
             chunk = texts[i:i + batch_size]
             print(f"[DEBUG] Batch {batch_num} | Chunks in batch: {len(chunk)}")
             
-            tasks = [embed_single(t) for t in chunk]
-            results = await asyncio.gather(*tasks)
+            # Send exactly 1 API call per batch
+            res = await embed_batch_request(chunk)
             
-            if results:
-                print(f"[DEBUG] Type of response (first item): {type(results[0])}")
-                try:
-                    print(f"[DEBUG] Repr of response: {repr(results[0])}")
-                except Exception as e:
-                    pass
-                
             batch_embeddings = []
-            for res in results:
-                # The response has an 'embeddings' attribute which is a list of Embedding objects
-                batch_embeddings.append(res.embeddings[0].values)
+            if res and hasattr(res, "embeddings"):
+                for emb in res.embeddings:
+                    batch_embeddings.append(emb.values)
+
             
             if batch_embeddings:
                 print(f"[DEBUG] Vectors returned in batch {batch_num}: {len(batch_embeddings)}")
