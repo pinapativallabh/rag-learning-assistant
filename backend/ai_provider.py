@@ -120,12 +120,46 @@ class OllamaEmbeddingClient(BaseEmbeddingClient):
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         import asyncio
+        batch_size = 50
+        all_embeddings = []
+        
+        print(f"\n[DEBUG] Starting embedding generation using Ollama")
+        print(f"[DEBUG] Model: {self.model_name}")
+        print(f"[DEBUG] Total input chunks: {len(texts)}")
+
         async def embed_text(text: str):
             async with self.sem:
                 res = await self.client.embeddings(model=self.model_name, prompt=text)
-                return res["embedding"]
-        tasks = [embed_text(t) for t in texts]
-        return await asyncio.gather(*tasks)
+                return res
+
+        for i in range(0, len(texts), batch_size):
+            batch_num = (i // batch_size) + 1
+            chunk = texts[i:i + batch_size]
+            print(f"[DEBUG] Batch {batch_num} | Size: {len(chunk)}")
+            
+            tasks = [embed_text(t) for t in chunk]
+            results = await asyncio.gather(*tasks)
+            
+            if results:
+                print(f"[DEBUG] Type of response (first item): {type(results[0])}")
+                try:
+                    print(f"[DEBUG] Repr of response schema keys: {list(results[0].keys())}")
+                except Exception:
+                    pass
+
+            batch_embeddings = [res["embedding"] for res in results]
+            
+            if batch_embeddings:
+                print(f"[DEBUG] Vectors returned in batch {batch_num}: {len(batch_embeddings)}")
+                print(f"[DEBUG] Dimension of first vector: {len(batch_embeddings[0])}")
+                
+            all_embeddings.extend(batch_embeddings)
+            print(f"[DEBUG] Running total: {len(all_embeddings)}")
+
+        print(f"[DEBUG] Final total chunks: {len(texts)}")
+        print(f"[DEBUG] Final total embeddings: {len(all_embeddings)}")
+        
+        return all_embeddings
 
 class GeminiEmbeddingClient(BaseEmbeddingClient):
     def __init__(self, api_key: str, model_name: str):
@@ -142,25 +176,52 @@ class GeminiEmbeddingClient(BaseEmbeddingClient):
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         import asyncio
-        batch_size = 100
+        batch_size = 50
         all_embeddings = []
         
-        async def embed_chunk(chunk):
-            res = await self.client.aio.models.embed_content(
-                model=self.model_name,
-                contents=chunk
-            )
-            return [e.values for e in res.embeddings]
-            
-        tasks = []
+        print(f"\n[DEBUG] Starting embedding generation using Gemini")
+        print(f"[DEBUG] Model: {self.model_name}")
+        print(f"[DEBUG] Total input chunks: {len(texts)}")
+        
+        sem = asyncio.Semaphore(15)
+        
+        async def embed_single(text: str):
+            async with sem:
+                res = await self.client.aio.models.embed_content(
+                    model=self.model_name,
+                    contents=text
+                )
+                return res
+                
         for i in range(0, len(texts), batch_size):
+            batch_num = (i // batch_size) + 1
             chunk = texts[i:i + batch_size]
-            tasks.append(embed_chunk(chunk))
+            print(f"[DEBUG] Batch {batch_num} | Size: {len(chunk)}")
             
-        results = await asyncio.gather(*tasks)
-        for res in results:
-            all_embeddings.extend(res)
+            tasks = [embed_single(t) for t in chunk]
+            results = await asyncio.gather(*tasks)
             
+            if results:
+                print(f"[DEBUG] Type of response (first item): {type(results[0])}")
+                try:
+                    print(f"[DEBUG] Repr of response: {repr(results[0])}")
+                except Exception as e:
+                    pass
+                
+            batch_embeddings = []
+            for res in results:
+                # The response has an 'embeddings' attribute which is a list of Embedding objects
+                batch_embeddings.append(res.embeddings[0].values)
+            
+            if batch_embeddings:
+                print(f"[DEBUG] Vectors returned in batch {batch_num}: {len(batch_embeddings)}")
+                print(f"[DEBUG] Dimension of first vector: {len(batch_embeddings[0])}")
+            
+            all_embeddings.extend(batch_embeddings)
+            print(f"[DEBUG] Running total: {len(all_embeddings)}")
+            
+        print(f"[DEBUG] Final total chunks: {len(texts)}")
+        print(f"[DEBUG] Final total embeddings: {len(all_embeddings)}")
         return all_embeddings
 
 # --- Factories ---

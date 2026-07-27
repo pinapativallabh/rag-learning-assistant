@@ -186,6 +186,30 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     collection = get_collection()
     
+    print("\n[DEBUG] --- HARD VALIDATION START ---")
+    print(f"[DEBUG] len(chunks) = {len(child_texts)}")
+    print(f"[DEBUG] len(ids) = {len(child_ids)}")
+    print(f"[DEBUG] len(metadatas) = {len(child_metadatas)}")
+    print(f"[DEBUG] len(embeddings) = {len(child_embeddings)}")
+    
+    if not (len(child_texts) == len(child_ids) == len(child_metadatas) == len(child_embeddings)):
+        raise ValueError(f"Number of embeddings {len(child_embeddings)} must match number of ids {len(child_ids)}")
+        
+    for i, emb in enumerate(child_embeddings):
+        if emb is None:
+            raise ValueError(f"Embedding at index {i} is None")
+        if not isinstance(emb, list):
+            raise ValueError(f"Embedding at index {i} is not a list, got {type(emb)}")
+        if len(emb) == 0:
+            raise ValueError(f"Embedding at index {i} is empty")
+        if i > 0 and len(emb) != len(child_embeddings[0]):
+            raise ValueError(f"Embedding dimension mismatch at index {i}: expected {len(child_embeddings[0])}, got {len(emb)}")
+            
+    if len(set(child_ids)) != len(child_ids):
+        raise ValueError("Duplicate IDs found in child_ids")
+        
+    print("[DEBUG] --- HARD VALIDATION PASSED ---\n")
+    
     # Store child chunks in ChromaDB (runs in background thread)
     await asyncio.to_thread(
         collection.add,
